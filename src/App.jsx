@@ -1,5 +1,7 @@
-import { useState, useMemo } from "react";
+// src/App.jsx
+import { useEffect, useMemo, useState } from "react";
 import Board, { calculateWinner } from "./components/board";
+import "./styles.css";
 
 const CARD_DEFS = {
   ERASE: { id: "ERASE", name: "Erase", cost: 1, target: "single" },
@@ -17,18 +19,48 @@ function tickLocks(locks) {
   return next;
 }
 
-function randomEmptyIndex(squares, locks) {
-  const empties = [];
+function getPlayableEmpties(squares, locks) {
+  const out = [];
   for (let i = 0; i < squares.length; i++) {
-    if (squares[i] === null && !locks[i]) empties.push(i);
+    if (squares[i] === null && !locks[i]) out.push(i);
   }
+  return out;
+}
+
+function findImmediateWinIndex(squares, N, locks, symbol) {
+  const empties = getPlayableEmpties(squares, locks);
+
+  for (const i of empties) {
+    const test = squares.slice();
+    test[i] = symbol;
+    if (calculateWinner(test, N) === symbol) return i;
+  }
+  return null;
+}
+
+function chooseEnemyMoveIndex(squares, N, locks, enemySymbol, playerSymbol) {
+  // 1) Enemy wins if possible
+  const win = findImmediateWinIndex(squares, N, locks, enemySymbol);
+  if (win !== null) return win;
+
+  // 2) Block player if they can win
+  const block = findImmediateWinIndex(squares, N, locks, playerSymbol);
+  if (block !== null) return block;
+
+  // 3) Otherwise random empty
+  const empties = getPlayableEmpties(squares, locks);
+  if (empties.length === 0) return null;
+  return empties[Math.floor(Math.random() * empties.length)];
+}
+
+function randomEmptyIndex(squares, locks) {
+  const empties = getPlayableEmpties(squares, locks);
   if (empties.length === 0) return null;
   return empties[Math.floor(Math.random() * empties.length)];
 }
 
 function applyEnemyPassive_THORNS({ squares, locks, enemySymbol }) {
-  // 25% chance to place an enemy mark in a random empty square
-  if (Math.random() >= 0.25) return squares;
+  if (Math.random() >= 0.35) return squares;
   const i = randomEmptyIndex(squares, locks);
   if (i === null) return squares;
   const next = squares.slice();
@@ -37,13 +69,14 @@ function applyEnemyPassive_THORNS({ squares, locks, enemySymbol }) {
 }
 
 export default function Game() {
-  // basic grid for core game
-  const N = 10;
+  const N = 5;
 
+  // Player is the starter symbol (can later toggle startSymbol)
   const [startSymbol] = useState("X");
   const playerSymbol = startSymbol;
   const enemySymbol = playerSymbol === "X" ? "O" : "X";
 
+  // CORE
   const [xIsNext, setXIsNext] = useState(true);
   const [history, setHistory] = useState([Array(N * N).fill(null)]);
   const currentSquares = history[history.length - 1];
@@ -59,36 +92,46 @@ export default function Game() {
   const [energy, setEnergy] = useState(1);
   const [enemyPassive] = useState({ id: "THORNS" });
   const [locks, setLocks] = useState({});
+  const [aiThinking, setAiThinking] = useState(false);
 
   const winner = useMemo(
     () => calculateWinner(currentSquares, N),
     [currentSquares, N]
   );
+
   const isPlayersTurn =
     (xIsNext && playerSymbol === "X") || (!xIsNext && playerSymbol === "O");
 
-  function setBoard(nextSquares) {
-    setHistory([...history, nextSquares]);
-    setXIsNext(!xIsNext);
+  const isEnemyTurn =
+    (xIsNext && enemySymbol === "X") || (!xIsNext && enemySymbol === "O");
+
+  function pushBoard(nextSquares) {
+    setHistory((prev) => [...prev, nextSquares]);
+    setXIsNext((prev) => !prev);
   }
 
   function canPlayCard(cardId) {
     const def = CARD_DEFS[cardId];
     const card = hand.find((c) => c.id === cardId);
+
     if (!def || !card) return false;
     if (!isPlayersTurn) return false;
     if (winner) return false;
+    if (aiThinking) return false;
     if (energy < def.cost) return false;
     if (card.charges <= 0) return false;
+
     return true;
   }
 
   function spendCard(cardId) {
     const def = CARD_DEFS[cardId];
+
     setEnergy((e) => e - def.cost);
     setHand((prev) =>
       prev.map((c) => (c.id === cardId ? { ...c, charges: c.charges - 1 } : c))
     );
+
     setSelectedCard(null);
     setTargets([]);
   }
@@ -114,30 +157,35 @@ export default function Game() {
   function applyCardSwap(i1, i2, squares) {
     if (i1 === i2) return { ok: false, squares };
     if (locks[i1] || locks[i2]) return { ok: false, squares };
+
     const next = squares.slice();
     const tmp = next[i1];
     next[i1] = next[i2];
     next[i2] = tmp;
+
     return { ok: true, squares: next };
   }
 
   function handleSquareClick(i) {
     if (winner) return;
+    if (aiThinking) return;
 
-    // Card targeting mode
+    // --- Card targeting mode ---
     if (selectedCard) {
       if (!canPlayCard(selectedCard)) return;
 
       const def = CARD_DEFS[selectedCard];
+
       if (def.target === "single") {
         const { ok, squares: after } = applyCardSingle(
           selectedCard,
           i,
           currentSquares
         );
+
         if (ok) {
-          // SHIELD might not change squares; ERASE might
-          if (after !== currentSquares) setHistory([...history, after]);
+          // Only push history if board actually changed (ERASE)
+          if (after !== currentSquares) setHistory((prev) => [...prev, after]);
           spendCard(selectedCard);
         }
         return;
@@ -146,14 +194,16 @@ export default function Game() {
       if (def.target === "double") {
         const nextTargets = [...targets, i];
         setTargets(nextTargets);
+
         if (nextTargets.length === 2) {
           const { ok, squares: after } = applyCardSwap(
             nextTargets[0],
             nextTargets[1],
             currentSquares
           );
+
           if (ok) {
-            setHistory([...history, after]);
+            setHistory((prev) => [...prev, after]);
             spendCard(selectedCard);
           } else {
             setTargets([]);
@@ -163,20 +213,18 @@ export default function Game() {
       }
     }
 
-    // Normal move mode
+    // --- Normal move mode ---
     if (!isPlayersTurn) return;
     if (locks[i]) return;
     if (currentSquares[i]) return;
 
-    // place player's symbol
     let next = currentSquares.slice();
-    next[i] = isPlayersTurn ? playerSymbol : enemySymbol;
+    next[i] = playerSymbol;
 
-    // tick locks after a move
     const nextLocks = tickLocks(locks);
     setLocks(nextLocks);
 
-    // enemy passive triggers after player move (chaos)
+    // Trigger enemy passive after player move (chaos)
     if (enemyPassive.id === "THORNS") {
       next = applyEnemyPassive_THORNS({
         squares: next,
@@ -185,14 +233,60 @@ export default function Game() {
       });
     }
 
-    setBoard(next);
+    pushBoard(next);
 
-    // Simple energy regen each turn for now
+    // Simple refill per player turn for now
     setEnergy(1);
   }
 
+  // Enemy takes a move automatically on its turn
+  useEffect(() => {
+    if (winner) return;
+    if (!isEnemyTurn) return;
+
+    setAiThinking(true);
+
+    const t = setTimeout(() => {
+      const i = chooseEnemyMoveIndex(
+        currentSquares,
+        N,
+        locks,
+        enemySymbol,
+        playerSymbol
+      );
+
+      if (i === null) {
+        setAiThinking(false);
+        return;
+      }
+
+      let next = currentSquares.slice();
+      next[i] = enemySymbol;
+
+      // Tick locks after enemy move too
+      const nextLocks = tickLocks(locks);
+      setLocks(nextLocks);
+
+      pushBoard(next);
+
+      setAiThinking(false);
+    }, 350);
+
+    return () => clearTimeout(t);
+  }, [
+    isEnemyTurn,
+    winner,
+    currentSquares,
+    N,
+    locks,
+    enemySymbol,
+    playerSymbol,
+  ]);
+
   const statusText = winner
     ? `Winner: ${winner}`
+    : aiThinking
+    ? "Enemy is thinking..."
     : `${isPlayersTurn ? "Your" : "Enemy"} turn (${
         isPlayersTurn ? playerSymbol : enemySymbol
       })`;
@@ -202,7 +296,9 @@ export default function Game() {
       <div className="header">
         <div>
           <div className="title">RogueTac</div>
-          <div className="subtitle">Phase 1: Cards + Enemy Passive</div>
+          <div className="subtitle">
+            Phase 1.1: Cards + Enemy Passive + AI Move
+          </div>
         </div>
 
         <div className="hud">

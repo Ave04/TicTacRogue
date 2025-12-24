@@ -55,16 +55,13 @@ export default function Board({
   statusText,
 }) {
   return (
-    <>
+    <div className="boardWrap">
       <div className="status">{statusText}</div>
 
       <div
         className="board"
         style={{
-          display: "grid",
           gridTemplateColumns: `repeat(${N}, 34px)`,
-          width: "fit-content",
-          gap: "6px",
         }}
       >
         {squares.map((value, i) => (
@@ -76,6 +73,6 @@ export default function Board({
           />
         ))}
       </div>
-    </>
+    </div>
   );
 }
