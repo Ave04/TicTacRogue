@@ -60,9 +60,7 @@ export default function Board({
 
       <div
         className="board"
-        style={{
-          gridTemplateColumns: `repeat(${N}, 34px)`,
-        }}
+        style={{ gridTemplateColumns: `repeat(${N}, 36px)` }}
       >
         {squares.map((value, i) => (
           <Square
