@@ -1,10 +1,4 @@
-function Square({ value, onSquareClick }) {
-  return (
-    <button className="square" onClick={onSquareClick}>
-      {value}
-    </button>
-  );
-}
+import Square from "./square";
 
 function makeLines(N) {
   const lines = [];
@@ -33,7 +27,7 @@ function makeLines(N) {
   return lines;
 }
 
-function calculateWinner(squares, N) {
+export function calculateWinner(squares, N) {
   const lines = makeLines(N);
 
   for (const line of lines) {
@@ -53,22 +47,16 @@ function calculateWinner(squares, N) {
   return null;
 }
 
-export default function Board({ N, squares, xIsNext, onPlay }) {
-  const winner = calculateWinner(squares, N);
-
-  function handleClick(i) {
-    if (squares[i] || winner) return;
-
-    const nextSquares = squares.slice();
-    nextSquares[i] = xIsNext ? "X" : "O";
-    onPlay(nextSquares);
-  }
-
+export default function Board({
+  N,
+  squares,
+  locks = {},
+  onSquareClick,
+  statusText,
+}) {
   return (
     <>
-      <div className="status">
-        {winner ? `Winner: ${winner}` : `Next player: ${xIsNext ? "X" : "O"}`}
-      </div>
+      <div className="status">{statusText}</div>
 
       <div
         className="board"
@@ -76,10 +64,16 @@ export default function Board({ N, squares, xIsNext, onPlay }) {
           display: "grid",
           gridTemplateColumns: `repeat(${N}, 34px)`,
           width: "fit-content",
+          gap: "6px",
         }}
       >
         {squares.map((value, i) => (
-          <Square key={i} value={value} onSquareClick={() => handleClick(i)} />
+          <Square
+            key={i}
+            value={value}
+            isLocked={Boolean(locks[i])}
+            onSquareClick={() => onSquareClick(i)}
+          />
         ))}
       </div>
     </>
