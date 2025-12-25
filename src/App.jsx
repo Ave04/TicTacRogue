@@ -11,9 +11,38 @@ const CARD_DEFS = {
   // PIERCE: { id: "PIERCE", name: "Pierce", cost: 1, target: "single" },
 };
 
+const PASSIVE_DEFS = {
+  THORNS: {
+    id: "THORNS",
+    name: "Thorns",
+    desc: "After you play, chance to place an extra enemy mark.",
+  },
+  LOCKDOWN: {
+    id: "LOCKDOWN",
+    name: "Lockdown",
+    desc: "After the enemy plays, locks a random empty square.",
+  },
+  CORRUPT: {
+    id: "CORRUPT",
+    name: "Corrupt",
+    desc: "After the enemy plays, chance to erase one of your marks.",
+  },
+  DOUBLE_TAP: {
+    id: "DOUBLE_TAP",
+    name: "Double Tap",
+    desc: "After the enemy plays, chance to immediately play again.",
+  },
+};
+
+function randomFrom(arr) {
+  if (!arr || arr.length === 0) return null;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// lock square for shield passive
 function tickLocks(locks) {
   const next = {};
-  for (const key in Object.keys(locks)) {
+  for (const key of Object.keys(locks)) {
     const i = Number(key);
     const t = locks[i] - 1;
     if (t > 0) next[i] = t;
@@ -21,6 +50,7 @@ function tickLocks(locks) {
   return next;
 }
 
+// find list of empty squares for next moves  (enemy)
 function getPlayableEmpties(squares, locks) {
   const canPlay = [];
   for (let i = 0; i < squares.length; i++) {
@@ -29,6 +59,7 @@ function getPlayableEmpties(squares, locks) {
   return canPlay;
 }
 
+// determine winning square if 1 away from win (simulated using copy of squares array)
 function findImmediateWinIndex(squares, N, locks, symbol) {
   const empties = getPlayableEmpties(squares, locks);
   for (const i of empties) {
@@ -39,6 +70,7 @@ function findImmediateWinIndex(squares, N, locks, symbol) {
   return null;
 }
 
+// enemy move options, can "predict" self and player winning moves to win or block
 function chooseEnemyMoveIndex(squares, N, locks, enemySymbol, playerSymbol) {
   const win = findImmediateWinIndex(squares, N, locks, enemySymbol);
   if (win !== null) return win;
@@ -51,6 +83,13 @@ function chooseEnemyMoveIndex(squares, N, locks, enemySymbol, playerSymbol) {
   return empties[Math.floor(Math.random() * empties.length)];
 }
 
+function rollEnemyPassive(floor) {
+  const pool = ["THORNS", "LOCKDOWN", "CORRUPT", "DOUBLE_TAP"];
+  const id = pool[Math.floor(Math.random() * pool.length)];
+  return { id };
+}
+
+// find random empty square
 function randomEmptyIndex(squares, locks) {
   const empties = getPlayableEmpties(squares, locks);
   if (empties.length === 0) return null;
@@ -58,12 +97,59 @@ function randomEmptyIndex(squares, locks) {
 }
 
 // enemy passive (scales with floor via chance)
-function applyEnemyPassive_THORNS({ squares, locks, enemySymbol, chance }) {
+function applyPassive_THORNS_afterPlayerMove({
+  squares,
+  locks,
+  enemySymbol,
+  chance,
+}) {
   if (Math.random() >= chance) return squares;
   const i = randomEmptyIndex(squares, locks);
   if (i === null) return squares;
   const next = squares.slice();
   next[i] = enemySymbol;
+  return next;
+}
+
+function applyPassive_LOCKDOWN_afterEnemyMove({
+  squares,
+  locks,
+  duration = 2,
+  count = 1,
+}) {
+  const nextLocks = { ...locks };
+  const empties = getPlayableEmpties(squares, nextLocks);
+
+  // lock up to `count` different empties
+  for (let k = 0; k < count; k++) {
+    if (empties.length === 0) break;
+    const pickIndex = Math.floor(Math.random() * empties.length);
+    const i = empties.splice(pickIndex, 1)[0];
+    nextLocks[i] = duration;
+  }
+
+  return nextLocks;
+}
+
+function applyPassive_CORRUPT_afterEnemyMove({
+  squares,
+  locks,
+  playerSymbol,
+  chance,
+}) {
+  if (Math.random() >= chance) return squares;
+
+  // only erase player's marks, and avoid locked squares
+  const candidates = [];
+  for (let i = 0; i < squares.length; i++) {
+    if (squares[i] === playerSymbol && !locks[i]) candidates.push(i);
+  }
+
+  const pick = randomFrom(candidates);
+  if (pick === null) return squares;
+
+  const next = squares.slice();
+  next[pick] = null;
   return next;
 }
 
@@ -89,6 +175,7 @@ function makeRewardOptions(hand) {
     [options[i], options[j]] = [options[j], options[i]];
   }
   return options.slice(0, 3);
+  0;
 }
 
 function createInitialHand() {
@@ -133,12 +220,15 @@ export default function Game() {
   const [maxEnergy, setMaxEnergy] = useState(1);
   const [energy, setEnergy] = useState(1);
 
-  const [enemyPassive] = useState({ id: "THORNS" });
+  const [enemyPassive, setEnemyPassive] = useState(() => rollEnemyPassive(1));
   const [locks, setLocks] = useState({});
   const [aiThinking, setAiThinking] = useState(false);
 
-  // Enemy passive scaling with floor (gentle)
-  const thornsChance = Math.min(0.1 + (floor - 1) * 0.04, 0.65);
+  // Scaling chances with floor (gentle)
+  const thornsChance = Math.min(0.3 + (floor - 1) * 0.04, 0.65);
+  const corruptChance = Math.min(0.2 + (floor - 1) * 0.03, 0.55);
+  const doubleTapChance = Math.min(0.18 + (floor - 1) * 0.02, 0.4);
+  const lockdownCount = floor >= 6 ? 2 : 1; // later floors lock 2 squares
 
   const winner = useMemo(
     () => calculateWinner(currentSquares, N),
@@ -165,16 +255,17 @@ export default function Game() {
     setLocks({});
     setAiThinking(false);
 
+    // reroll passive after clearing a floor
+    setEnemyPassive(rollEnemyPassive(nextFloor));
+
     // Player always starts each fight
     setXIsNext(playerSymbol === "X");
 
     setHistory([makeEmptyBoard(nextN)]);
 
-    // refill energy + card charges each new fight
     setEnergy(maxEnergy);
     setHand((prev) => refillHandCharges(prev));
   }
-
   function restartRun() {
     setFloor(1);
     setPhase("PLAYING");
@@ -186,6 +277,7 @@ export default function Game() {
     setTargets([]);
     setLocks({});
     setAiThinking(false);
+    setEnemyPassive(rollEnemyPassive(1));
     setXIsNext(playerSymbol === "X");
     setHistory([makeEmptyBoard(3)]);
   }
@@ -326,7 +418,7 @@ export default function Game() {
 
     // Enemy passive triggers after player move
     if (enemyPassive.id === "THORNS") {
-      next = applyEnemyPassive_THORNS({
+      next = applyPassive_THORNS_afterPlayerMove({
         squares: next,
         locks: nextLocks,
         enemySymbol,
@@ -336,7 +428,7 @@ export default function Game() {
 
     pushBoard(next);
 
-    // Energy refills per player turn for now (simple)
+    // simple refill per player turn
     setEnergy(maxEnergy);
   }
 
@@ -349,27 +441,73 @@ export default function Game() {
     setAiThinking(true);
 
     const t = setTimeout(() => {
-      const i = chooseEnemyMoveIndex(
-        currentSquares,
+      let nextSquares = currentSquares.slice();
+      let nextLocks = locks;
+
+      // enemy move #1
+      const move1 = chooseEnemyMoveIndex(
+        nextSquares,
         N,
-        locks,
+        nextLocks,
         enemySymbol,
         playerSymbol
       );
+      if (move1 === null) {
+        setAiThinking(false);
+        return;
+      }
+      nextSquares[move1] = enemySymbol;
 
-      if (i === null) {
+      // tick locks after move
+      nextLocks = tickLocks(nextLocks);
+
+      // If enemy already won, commit and stop
+      if (calculateWinner(nextSquares, N) === enemySymbol) {
+        setLocks(nextLocks);
+        pushBoard(nextSquares);
         setAiThinking(false);
         return;
       }
 
-      let next = currentSquares.slice();
-      next[i] = enemySymbol;
+      // ✅ Passives after enemy move
+      if (enemyPassive.id === "LOCKDOWN") {
+        nextLocks = applyPassive_LOCKDOWN_afterEnemyMove({
+          squares: nextSquares,
+          locks: nextLocks,
+          duration: 2,
+          count: lockdownCount,
+        });
+      }
 
-      const nextLocks = tickLocks(locks);
+      if (enemyPassive.id === "CORRUPT") {
+        nextSquares = applyPassive_CORRUPT_afterEnemyMove({
+          squares: nextSquares,
+          locks: nextLocks,
+          playerSymbol,
+          chance: corruptChance,
+        });
+      }
+
+      // ✅ DOUBLE_TAP: chance to play another move immediately
+      if (enemyPassive.id === "DOUBLE_TAP" && Math.random() < doubleTapChance) {
+        const move2 = chooseEnemyMoveIndex(
+          nextSquares,
+          N,
+          nextLocks,
+          enemySymbol,
+          playerSymbol
+        );
+        if (move2 !== null) {
+          nextSquares = nextSquares.slice();
+          nextSquares[move2] = enemySymbol;
+
+          // tick locks again because it's another move
+          nextLocks = tickLocks(nextLocks);
+        }
+      }
+
       setLocks(nextLocks);
-
-      pushBoard(next);
-
+      pushBoard(nextSquares);
       setAiThinking(false);
     }, 350);
 
@@ -383,6 +521,11 @@ export default function Game() {
     locks,
     enemySymbol,
     playerSymbol,
+    enemyPassive.id,
+    thornsChance,
+    corruptChance,
+    doubleTapChance,
+    lockdownCount,
   ]);
 
   // ---------- Rewards ----------
@@ -426,6 +569,8 @@ export default function Game() {
     resetFight(nextFloor);
   }
 
+  const passiveInfo = PASSIVE_DEFS[enemyPassive.id];
+
   const statusText =
     phase === "GAMEOVER"
       ? "Game Over"
@@ -441,7 +586,7 @@ export default function Game() {
     <div className="page">
       <div className="header">
         <div>
-          <div className="title">RogueTac</div>
+          <div className="title">TicTacRogue</div>
           <div className="subtitle">
             Floor {floor} • Board {N}×{N} • Win to advance
           </div>
@@ -451,7 +596,9 @@ export default function Game() {
           <div className="pill">
             Energy: {energy}/{maxEnergy}
           </div>
-          <div className="pill">Enemy passive: {enemyPassive.id}</div>
+          <div className="pill">
+            Enemy: {passiveInfo?.name ?? enemyPassive.id}
+          </div>
         </div>
       </div>
 
@@ -490,6 +637,13 @@ export default function Game() {
               );
             })}
           </div>
+
+          {/* tiny helper text */}
+          {passiveInfo?.desc && (
+            <div className="small" style={{ marginTop: 12 }}>
+              <b>Enemy passive:</b> {passiveInfo.desc}
+            </div>
+          )}
         </div>
 
         <div className="center">
