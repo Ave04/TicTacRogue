@@ -204,6 +204,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  position: relative;
 }
 
 .status {
@@ -239,6 +240,10 @@ body {
   font-weight: 900;
   cursor: pointer;
 
+  display: flex; /* Ensures content inside is treated as flexbox */
+  justify-content: center; /* Centers horizontally */
+  align-items: center; /* Centers vertically */
+
   transition: transform 90ms ease, box-shadow 90ms ease, background 90ms ease;
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
 }
@@ -257,5 +262,22 @@ body {
   background: rgba(15, 23, 42, 0.06);
   border-color: rgba(15, 23, 42, 0.18);
   outline: 2px solid rgba(15, 23, 42, 0.1);
-  cursor: not-allowed;
+  cursor: not-allowed; /* Ensure the player knows they can't click the locked square */
+}
+
+.square.locked:hover {
+  transform: none;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+}
+
+/* Specific style for the energy square */
+.energySquare {
+  background-color: #f7d700; /* Yellow color */
+  border: 2px solid #ffcb00; /* Slightly darker yellow for contrast */
+  box-shadow: 0 0 5px rgba(255, 203, 0, 0.7); /* Optional glow effect */
+}
+
+/* Modify the hover effect for energy square */
+.energySquare:hover {
+  background-color: #f7e300; /* Slightly lighter yellow for hover */
 }

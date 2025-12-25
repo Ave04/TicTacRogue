@@ -2,13 +2,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Board, { calculateWinner } from "./components/board";
 import "./styles.css";
+import { Zap } from "lucide-react";
 
 const CARD_DEFS = {
   ERASE: { id: "ERASE", name: "Erase", cost: 1, target: "single" },
   SWAP: { id: "SWAP", name: "Swap", cost: 1, target: "double" },
   SHIELD: { id: "SHIELD", name: "Shield", cost: 1, target: "single" },
-  // easy future adds:
-  // PIERCE: { id: "PIERCE", name: "Pierce", cost: 1, target: "single" },
 };
 
 const PASSIVE_DEFS = {
@@ -50,7 +49,7 @@ function tickLocks(locks) {
   return next;
 }
 
-// find list of empty squares for next moves  (enemy)
+// find list of empty squares for next moves (enemy)
 function getPlayableEmpties(squares, locks) {
   const canPlay = [];
   for (let i = 0; i < squares.length; i++) {
@@ -94,6 +93,17 @@ function randomEmptyIndex(squares, locks) {
   const empties = getPlayableEmpties(squares, locks);
   if (empties.length === 0) return null;
   return empties[Math.floor(Math.random() * empties.length)];
+}
+
+// randomly initialise one square with zap
+function energySquareAssignment(squares, locks) {
+  const empties = getPlayableEmpties(squares, locks);
+  if (empties.length === 0) return null; // No empty squares, return nothing
+
+  const randomIndex = Math.floor(Math.random() * empties.length);
+  const energySquareIndex = empties[randomIndex];
+
+  return energySquareIndex; // Returns index of zap square
 }
 
 // enemy passive (scales with floor via chance)
@@ -219,6 +229,7 @@ export default function Game() {
 
   const [maxEnergy, setMaxEnergy] = useState(1);
   const [energy, setEnergy] = useState(1);
+  const [energySquare, setEnergySquare] = useState(null);
 
   const [enemyPassive, setEnemyPassive] = useState(() => rollEnemyPassive(1));
   const [locks, setLocks] = useState({});
@@ -229,6 +240,13 @@ export default function Game() {
   const corruptChance = Math.min(0.2 + (floor - 1) * 0.03, 0.55);
   const doubleTapChance = Math.min(0.18 + (floor - 1) * 0.02, 0.4);
   const lockdownCount = floor >= 6 ? 2 : 1; // later floors lock 2 squares
+
+  useEffect(() => {
+    if (floor > 1) {
+      const energySquareIndex = energySquareAssignment(currentSquares, locks);
+      setEnergySquare(energySquareIndex); // Assign the energy square to a random empty square
+    }
+  }, [floor, currentSquares, locks]);
 
   const winner = useMemo(
     () => calculateWinner(currentSquares, N),
@@ -263,7 +281,6 @@ export default function Game() {
 
     setHistory([makeEmptyBoard(nextN)]);
 
-    setEnergy(maxEnergy);
     setHand((prev) => refillHandCharges(prev));
   }
   function restartRun() {
@@ -309,7 +326,7 @@ export default function Game() {
     if (!isPlayersTurn) return false;
     if (winner) return false;
     if (aiThinking) return false;
-    if (energy < def.cost) return false;
+    if (energy < def.cost) return false; // Ensure energy is checked
     if (card.charges <= 0) return false;
 
     return true;
@@ -318,7 +335,7 @@ export default function Game() {
   function spendCard(cardId) {
     const def = CARD_DEFS[cardId];
 
-    setEnergy((e) => e - def.cost);
+    setEnergy((prevEnergy) => prevEnergy - def.cost); // Reduce energy based on card cost
     setHand((prev) =>
       prev.map((c) => (c.id === cardId ? { ...c, charges: c.charges - 1 } : c))
     );
@@ -407,7 +424,7 @@ export default function Game() {
 
     // --- Normal move mode ---
     if (!isPlayersTurn) return;
-    if (locks[i]) return;
+    if (locks[i]) return; // This prevents clicking locked squares
     if (currentSquares[i]) return;
 
     let next = currentSquares.slice();
@@ -416,7 +433,7 @@ export default function Game() {
     const nextLocks = tickLocks(locks);
     setLocks(nextLocks);
 
-    // Enemy passive triggers after player move
+    // Apply passive effects after the player move
     if (enemyPassive.id === "THORNS") {
       next = applyPassive_THORNS_afterPlayerMove({
         squares: next,
@@ -426,10 +443,13 @@ export default function Game() {
       });
     }
 
-    pushBoard(next);
+    // If player clicks on energy square, reward energy
+    if (i === energySquare) {
+      setEnergy(energy + 1); // Add energy charge to player
+      setEnergySquare(null); // Clear the energy square after it’s used
+    }
 
-    // simple refill per player turn
-    setEnergy(maxEnergy);
+    pushBoard(next);
   }
 
   // ---------- Enemy AI turn ----------
@@ -654,6 +674,7 @@ export default function Game() {
               locks={locks}
               onSquareClick={handleSquareClick}
               statusText={statusText}
+              energySquare={energySquare} // Passing energy square to board component
             />
 
             {phase === "REWARD" && (

@@ -47,12 +47,14 @@ export function calculateWinner(squares, N) {
   return null;
 }
 
+// src/components/board.jsx
 export default function Board({
   N,
   squares,
-  locks = {},
+  locks,
   onSquareClick,
   statusText,
+  energySquare,
 }) {
   return (
     <div className="boardWrap">
@@ -60,16 +62,33 @@ export default function Board({
 
       <div
         className="board"
-        style={{ gridTemplateColumns: `repeat(${N}, 36px)` }}
+        style={{
+          gridTemplateColumns: `repeat(${N}, 36px)`,
+          gridTemplateRows: `repeat(${N}, 36px)`,
+        }}
       >
-        {squares.map((value, i) => (
-          <Square
-            key={i}
-            value={value}
-            isLocked={Boolean(locks[i])}
-            onSquareClick={() => onSquareClick(i)}
-          />
-        ))}
+        {squares.map((value, i) => {
+          const isLocked = !!locks?.[i];
+          const isEnergy = i === energySquare;
+
+          return (
+            <div
+              key={i}
+              className={[
+                "square",
+                isLocked ? "locked" : "",
+                isEnergy ? "energySquare" : "",
+              ].join(" ")}
+              onClick={() => {
+                if (isLocked) return; // stops hover/click “feeling” interactive
+                onSquareClick(i);
+              }}
+              aria-disabled={isLocked}
+            >
+              {value}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
