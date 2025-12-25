@@ -13,7 +13,7 @@ const CARD_DEFS = {
 
 function tickLocks(locks) {
   const next = {};
-  for (const key of Object.keys(locks)) {
+  for (const key in Object.keys(locks)) {
     const i = Number(key);
     const t = locks[i] - 1;
     if (t > 0) next[i] = t;
@@ -22,19 +22,19 @@ function tickLocks(locks) {
 }
 
 function getPlayableEmpties(squares, locks) {
-  const out = [];
+  const canPlay = [];
   for (let i = 0; i < squares.length; i++) {
-    if (squares[i] === null && !locks[i]) out.push(i);
+    if (squares[i] === null && !locks[i]) canPlay.push(i);
   }
-  return out;
+  return canPlay;
 }
 
 function findImmediateWinIndex(squares, N, locks, symbol) {
   const empties = getPlayableEmpties(squares, locks);
   for (const i of empties) {
-    const test = squares.slice();
-    test[i] = symbol;
-    if (calculateWinner(test, N) === symbol) return i;
+    const copy = squares.slice();
+    copy[i] = symbol;
+    if (calculateWinner(copy, N) === symbol) return i;
   }
   return null;
 }
