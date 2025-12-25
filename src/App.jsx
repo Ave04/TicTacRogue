@@ -444,7 +444,7 @@ export default function Game() {
     }
 
     // If player clicks on energy square, reward energy
-    if (i === energySquare) {
+    if (i === energySquare && energy < maxEnergy) {
       setEnergy(energy + 1); // Add energy charge to player
       setEnergySquare(null); // Clear the energy square after it’s used
     }
