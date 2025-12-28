@@ -33,6 +33,61 @@ const PASSIVE_DEFS = {
   },
 };
 
+const ENCOUNTER_DEFS = {
+  // normals (1 passive)
+  BRAMBLE: {
+    id: "BRAMBLE",
+    name: "Bramble",
+    passiveIds: ["THORNS"],
+    mods: { thornsBonus: 0.06 },
+    isBoss: false,
+  },
+  WARDEN: {
+    id: "WARDEN",
+    name: "Warden",
+    passiveIds: ["LOCKDOWN"],
+    mods: { lockDuration: 2, lockCountBonus: 0 },
+    isBoss: false,
+  },
+  ROTTER: {
+    id: "ROTTER",
+    name: "Rotter",
+    passiveIds: ["CORRUPT"],
+    mods: { corruptBonus: 0.05 },
+    isBoss: false,
+  },
+  DUELIST: {
+    id: "DUELIST",
+    name: "Duelist",
+    passiveIds: ["DOUBLE_TAP"],
+    mods: { doubleTapBonus: 0.04 },
+    isBoss: false,
+  },
+
+  // bosses (2 passives)
+  BOSS_IRON_WARDEN: {
+    id: "BOSS_IRON_WARDEN",
+    name: "Iron Warden",
+    passiveIds: ["LOCKDOWN", "DOUBLE_TAP"],
+    mods: { lockDuration: 3, lockCountBonus: 1, doubleTapBonus: 0.06 },
+    isBoss: true,
+  },
+  BOSS_PLAGUE_KING: {
+    id: "BOSS_PLAGUE_KING",
+    name: "Plague King",
+    passiveIds: ["CORRUPT", "THORNS"],
+    mods: { corruptBonus: 0.07, thornsBonus: 0.08 },
+    isBoss: true,
+  },
+  BOSS_CHAOS_JESTER: {
+    id: "BOSS_CHAOS_JESTER",
+    name: "Chaos Jester",
+    passiveIds: ["THORNS", "DOUBLE_TAP"],
+    mods: { thornsBonus: 0.08, doubleTapBonus: 0.08 },
+    isBoss: true,
+  },
+};
+
 function randomFrom(arr) {
   if (!arr || arr.length === 0) return null;
   return arr[Math.floor(Math.random() * arr.length)];
