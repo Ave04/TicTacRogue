@@ -33,6 +33,8 @@ const PASSIVE_DEFS = {
   },
 };
 
+const BOSS_EVERY = 3;
+
 const ENCOUNTER_DEFS = {
   // normals (1 passive)
   BRAMBLE: {
@@ -93,6 +95,10 @@ function randomFrom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
 // lock square for shield passive
 function tickLocks(locks) {
   const next = {};
@@ -141,6 +147,19 @@ function rollEnemyPassive(floor) {
   const pool = ["THORNS", "LOCKDOWN", "CORRUPT", "DOUBLE_TAP"];
   const id = pool[Math.floor(Math.random() * pool.length)];
   return { id };
+}
+
+function rollEncounter(floor) {
+  const isBossFloor = floor % BOSS_EVERY === 0;
+  const keys = Object.keys(ENCOUNTER_DEFS).filter(
+    (k) => ENCOUNTER_DEFS[k].isBoss === isBossFloor
+  );
+  const pickKey = randomFrom(keys) || keys[0];
+  return ENCOUNTER_DEFS[pickKey];
+}
+
+function hasPassive(encounter, id) {
+  return encounter?.passiveIds?.includes(id);
 }
 
 // find random empty square
@@ -286,15 +305,27 @@ export default function Game() {
   const [energy, setEnergy] = useState(1);
   const [energySquare, setEnergySquare] = useState(null);
 
-  const [enemyPassive, setEnemyPassive] = useState(() => rollEnemyPassive(1));
+  const [encounter, setEncounter] = useState(() => rollEncounter(1));
   const [locks, setLocks] = useState({});
   const [aiThinking, setAiThinking] = useState(false);
 
-  // Scaling chances with floor (gentle)
-  const thornsChance = Math.min(0.3 + (floor - 1) * 0.04, 0.65);
-  const corruptChance = Math.min(0.2 + (floor - 1) * 0.03, 0.55);
-  const doubleTapChance = Math.min(0.18 + (floor - 1) * 0.02, 0.4);
-  const lockdownCount = floor >= 6 ? 2 : 1; // later floors lock 2 squares
+  // Scaling chances with floor (gentle base)
+  const baseThorns = Math.min(0.3 + (floor - 1) * 0.04, 0.65);
+  const baseCorrupt = Math.min(0.2 + (floor - 1) * 0.03, 0.55);
+  const baseDouble = Math.min(0.18 + (floor - 1) * 0.02, 0.4);
+  const baseLockCount = floor >= 6 ? 2 : 1;
+
+  // Encounter mods (optional)
+  const mods = encounter?.mods || {};
+  const thornsChance = clamp(baseThorns + (mods.thornsBonus || 0), 0, 0.9);
+  const corruptChance = clamp(baseCorrupt + (mods.corruptBonus || 0), 0, 0.9);
+  const doubleTapChance = clamp(
+    baseDouble + (mods.doubleTapBonus || 0),
+    0,
+    0.9
+  );
+  const lockdownCount = baseLockCount + (mods.lockCountBonus || 0);
+  const lockdownDuration = mods.lockDuration || 2;
 
   useEffect(() => {
     if (floor > 1) {
@@ -328,8 +359,8 @@ export default function Game() {
     setLocks({});
     setAiThinking(false);
 
-    // reroll passive after clearing a floor
-    setEnemyPassive(rollEnemyPassive(nextFloor));
+    // reroll encounter after clearing a floor
+    setEncounter(rollEncounter(nextFloor));
 
     // Player always starts each fight
     setXIsNext(playerSymbol === "X");
@@ -349,7 +380,7 @@ export default function Game() {
     setTargets([]);
     setLocks({});
     setAiThinking(false);
-    setEnemyPassive(rollEnemyPassive(1));
+    setEncounter(rollEncounter(1));
     setXIsNext(playerSymbol === "X");
     setHistory([makeEmptyBoard(3)]);
   }
@@ -489,7 +520,7 @@ export default function Game() {
     setLocks(nextLocks);
 
     // Apply passive effects after the player move
-    if (enemyPassive.id === "THORNS") {
+    if (hasPassive(encounter, "THORNS")) {
       next = applyPassive_THORNS_afterPlayerMove({
         squares: next,
         locks: nextLocks,
@@ -544,17 +575,17 @@ export default function Game() {
         return;
       }
 
-      // ✅ Passives after enemy move
-      if (enemyPassive.id === "LOCKDOWN") {
+      // passives after enemy move (can be multiple)
+      if (hasPassive(encounter, "LOCKDOWN")) {
         nextLocks = applyPassive_LOCKDOWN_afterEnemyMove({
           squares: nextSquares,
           locks: nextLocks,
-          duration: 2,
+          duration: lockdownDuration,
           count: lockdownCount,
         });
       }
 
-      if (enemyPassive.id === "CORRUPT") {
+      if (hasPassive(encounter, "CORRUPT")) {
         nextSquares = applyPassive_CORRUPT_afterEnemyMove({
           squares: nextSquares,
           locks: nextLocks,
@@ -563,8 +594,10 @@ export default function Game() {
         });
       }
 
-      // ✅ DOUBLE_TAP: chance to play another move immediately
-      if (enemyPassive.id === "DOUBLE_TAP" && Math.random() < doubleTapChance) {
+      if (
+        hasPassive(encounter, "DOUBLE_TAP") &&
+        Math.random() < doubleTapChance
+      ) {
         const move2 = chooseEnemyMoveIndex(
           nextSquares,
           N,
@@ -575,8 +608,6 @@ export default function Game() {
         if (move2 !== null) {
           nextSquares = nextSquares.slice();
           nextSquares[move2] = enemySymbol;
-
-          // tick locks again because it's another move
           nextLocks = tickLocks(nextLocks);
         }
       }
@@ -596,7 +627,7 @@ export default function Game() {
     locks,
     enemySymbol,
     playerSymbol,
-    enemyPassive.id,
+    encounter,
     thornsChance,
     corruptChance,
     doubleTapChance,
@@ -644,7 +675,9 @@ export default function Game() {
     resetFight(nextFloor);
   }
 
-  const passiveInfo = PASSIVE_DEFS[enemyPassive.id];
+  const passiveLabels = (encounter?.passiveIds || [])
+    .map((id) => PASSIVE_DEFS[id]?.name || id)
+    .join(" + ");
 
   const statusText =
     phase === "GAMEOVER"
@@ -663,7 +696,8 @@ export default function Game() {
         <div>
           <div className="title">TicTacRogue</div>
           <div className="subtitle">
-            Floor {floor} • Board {N}×{N} • Win to advance
+            Floor {floor} • Board {N}×{N} •{" "}
+            {floor % BOSS_EVERY === 0 ? "BOSS FIGHT" : "Fight"} • Win to advance
           </div>
         </div>
 
@@ -672,7 +706,8 @@ export default function Game() {
             Energy: {energy}/{maxEnergy}
           </div>
           <div className="pill">
-            Enemy: {passiveInfo?.name ?? enemyPassive.id}
+            Enemy: {encounter?.name} {encounter?.isBoss ? "👑" : ""} •{" "}
+            {passiveLabels}
           </div>
         </div>
       </div>
@@ -713,12 +748,18 @@ export default function Game() {
             })}
           </div>
 
-          {/* tiny helper text */}
-          {passiveInfo?.desc && (
-            <div className="small" style={{ marginTop: 12 }}>
-              <b>Enemy passive:</b> {passiveInfo.desc}
-            </div>
-          )}
+          {/* passive descriptions (supports 2 passives on bosses) */}
+          <div className="small" style={{ marginTop: 12 }}>
+            <b>Enemy passives:</b>
+            <ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
+              {(encounter?.passiveIds || []).map((pid) => (
+                <li key={pid}>
+                  <b>{PASSIVE_DEFS[pid]?.name ?? pid}:</b>{" "}
+                  {PASSIVE_DEFS[pid]?.desc ?? ""}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
         <div className="center">
@@ -729,7 +770,7 @@ export default function Game() {
               locks={locks}
               onSquareClick={handleSquareClick}
               statusText={statusText}
-              energySquare={energySquare} // Passing energy square to board component
+              energySquare={energySquare}
             />
 
             {phase === "REWARD" && (
