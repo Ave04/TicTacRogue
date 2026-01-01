@@ -80,7 +80,7 @@ export default function Board({
                 isEnergy ? "energySquare" : "",
               ].join(" ")}
               onClick={() => {
-                if (isLocked) return; // stops hover/click “feeling” interactive
+                if (isLocked) return;
                 onSquareClick(i);
               }}
               aria-disabled={isLocked}

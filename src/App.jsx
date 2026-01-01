@@ -204,7 +204,7 @@ function applyPassive_LOCKDOWN_afterEnemyMove({
   const nextLocks = { ...locks };
   const empties = getPlayableEmpties(squares, nextLocks);
 
-  // lock up to `count` different empties
+  // lock up to count different empties
   for (let k = 0; k < count; k++) {
     if (empties.length === 0) break;
     const pickIndex = Math.floor(Math.random() * empties.length);
