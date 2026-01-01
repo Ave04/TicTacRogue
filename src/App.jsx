@@ -278,7 +278,83 @@ function makeEmptyBoard(N) {
   return Array(N * N).fill(null);
 }
 
-export default function Game() {
+export default function App() {
+  const [mode, setMode] = useState(null);
+
+  if (mode === null) {
+    return <ModeMenu onPick={(m) => setMode(m)} />;
+  }
+
+  // key forces remount when you go back then start again
+  if (mode === "INFINITAC") {
+    return <InfinitacGame key="INFINITAC" onExit={() => setMode(null)} />;
+  }
+
+  // (unused for now)
+  return <ModeMenu onPick={(m) => setMode(m)} />;
+}
+
+function ModeMenu({ onPick }) {
+  return (
+    <div className="page">
+      <div className="header">
+        <div>
+          <div className="title">TicTacRogue</div>
+          <div className="subtitle">Choose a game mode</div>
+        </div>
+      </div>
+
+      <div
+        className="content"
+        style={{
+          gridTemplateColumns: "1fr",
+          alignItems: "center",
+          justifyItems: "center",
+        }}
+      >
+        <div
+          className="left"
+          style={{
+            width: "min(680px, 92vw)",
+            textAlign: "center",
+          }}
+        >
+          <div className="panelTitle" style={{ fontSize: 18 }}>
+            Select Mode
+          </div>
+
+          <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+            {/*  Placeholder (no onclick yet) */}
+            <button className="card" disabled style={{ margin: 0 }}>
+              <div className="cardTop">
+                <span className="cardName">RogueTac</span>
+                <span className="pill">Coming soon</span>
+              </div>
+              <div className="small">More fun mode coming soon</div>
+            </button>
+
+            {/* current game */}
+            <button
+              className="card"
+              style={{ margin: 0 }}
+              onClick={() => onPick("INFINITAC")}
+            >
+              <div className="cardTop">
+                <span className="cardName">InfiniTac</span>
+                <span className="pill">Play</span>
+              </div>
+              <div className="small">
+                Current mode: board grows every floor. Boss every 3 floors.
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfinitacGame({ onExit }) {
   const [floor, setFloor] = useState(1);
   const N = 2 + floor;
 
