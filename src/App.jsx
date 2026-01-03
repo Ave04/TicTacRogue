@@ -785,6 +785,13 @@ function InfinitacGame({ onExit }) {
             Enemy: {encounter?.name} {encounter?.isBoss ? "👑" : ""} •{" "}
             {passiveLabels}
           </div>
+          <button
+            className="pill"
+            onClick={onExit}
+            style={{ cursor: "pointer" }}
+          >
+            Back to menu
+          </button>
         </div>
       </div>
 
