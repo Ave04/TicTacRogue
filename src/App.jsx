@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Board, { calculateWinner } from "./components/board";
 import "./styles.css";
-import { Zap } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 
 const CARD_DEFS = {
   ERASE: { id: "ERASE", name: "Erase", cost: 1, target: "single" },
@@ -786,11 +786,11 @@ function InfinitacGame({ onExit }) {
             {passiveLabels}
           </div>
           <button
-            className="pill"
+            className="pill pillIcon"
             onClick={onExit}
             style={{ cursor: "pointer" }}
           >
-            Back to menu
+            <ChevronLeft />
           </button>
         </div>
       </div>
