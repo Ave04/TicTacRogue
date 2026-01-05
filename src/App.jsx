@@ -654,15 +654,19 @@ function InfinitacGame({ onExit }) {
 
     // Apply passive effects after the player move
     if (hasPassive(encounter, "THORNS")) {
-      next = applyPassive_THORNS_afterPlayerMove({
+      const res = applyPassive_THORNS_afterPlayerMove({
         squares: next,
         locks: nextLocks,
         enemySymbol,
         chance: thornsChance,
       });
-    }
-    next = res.squares;
+      next = res.squares;
 
+      // optional: scoring for the thorn mark too (feels fair)
+      if (res.placedIndex !== null) {
+        awardIfNewMax(enemySymbol, next, res.placedIndex);
+      }
+    }
     // If player clicks on energy square, reward energy
     if (i === energySquare && energy < maxEnergy) {
       setEnergy(energy + 1); // Add energy charge to player
