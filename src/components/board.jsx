@@ -1,4 +1,5 @@
 import Square from "./square";
+import { useRef, useEffect, useState } from "react";
 
 function makeLines(N) {
   const lines = [];
@@ -55,10 +56,60 @@ export default function Board({
   onSquareClick,
   statusText,
   energySquare,
+  scorePop,
 }) {
+  const boardRef = useRef(null);
+  const squareRefs = useRef([]);
+  const [pops, setPops] = useState([]);
+
+  useEffect(() => {
+    if (!scorePop || !boardRef.current) return;
+
+    const sq = squareRefs.current[scorePop.index];
+    const br = boardRef.current;
+
+    if (!sq) return;
+
+    const brRect = br.getBoundingClientRect();
+    const sqRect = sq.getBoundingClientRect();
+
+    const x = sqRect.left - brRect.left + sqRect.width / 2;
+    const y = sqRect.top - brRect.top + sqRect.height / 2;
+
+    const pop = {
+      id: scorePop.id,
+      x,
+      y,
+      text: `+${scorePop.delta}`,
+      symbol: scorePop.symbol,
+    };
+
+    setPops((prev) => [...prev, pop]);
+
+    const t = setTimeout(() => {
+      setPops((prev) => prev.filter((p) => p.id !== pop.id));
+    }, 900);
+
+    return () => clearTimeout(t);
+  }, [scorePop?.id]); // only react to new pop ids
+
   return (
     <div className="boardWrap">
       <div className="status">{statusText}</div>
+
+      <div className="popLayer" aria-hidden="true">
+        {pops.map((p) => (
+          <div
+            key={p.id}
+            className={`scorePop ${
+              p.symbol === "O" ? "enemyPop" : "playerPop"
+            }`}
+            style={{ left: p.x, top: p.y }}
+          >
+            {p.text}
+          </div>
+        ))}
+      </div>
 
       <div
         className="board"
@@ -70,6 +121,8 @@ export default function Board({
         {squares.map((value, i) => {
           const isLocked = !!locks?.[i];
           const isEnergy = i === energySquare;
+
+          const showPop = scorePop && scorePop.index === i;
 
           return (
             <div
@@ -86,6 +139,8 @@ export default function Board({
               aria-disabled={isLocked}
             >
               {value}
+
+              {showPop && <div className="scorePop">+{scorePop.delta}</div>}
             </div>
           );
         })}

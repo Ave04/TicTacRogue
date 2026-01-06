@@ -296,3 +296,50 @@ body {
 .energySquare:hover {
   background-color: #f7e300; /* Slightly lighter yellow for hover */
 }
+
+.boardWrap {
+  position: relative;
+}
+
+.popLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.scorePop {
+  position: absolute;
+  transform: translate(-50%, -60%);
+  font-weight: 900;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  animation: popFloat 900ms ease-out forwards;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.25);
+}
+
+.playerPop {
+  background: rgba(15, 23, 42, 0.92);
+  color: white;
+}
+
+.enemyPop {
+  background: rgba(220, 38, 38, 0.92);
+  color: white;
+}
+
+@keyframes popFloat {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.9);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -70%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -120%) scale(1);
+  }
+}

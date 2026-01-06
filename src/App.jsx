@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import Board, { calculateWinner } from "./components/board";
 import "./styles.css";
 import { ChevronLeft } from "lucide-react";
@@ -1024,6 +1024,19 @@ function RogueTacGame({ onExit }) {
 
   // Per player, store scored segments per "line" (row/col/diag)
   const [scoredSegs, setScoredSegs] = useState({ X: {}, O: {} });
+  const [scorePop, setScorePop] = useState(null);
+
+  const scoredSegsRef = useRef(scoredSegs);
+
+  useEffect(() => {
+    scoredSegsRef.current = scoredSegs;
+  }, [scoredSegs]);
+
+  useEffect(() => {
+    if (!scorePop) return;
+    const t = setTimeout(() => setScorePop(null), 700);
+    return () => clearTimeout(t);
+  }, [scorePop?.id]);
 
   function pointsForLen(L) {
     return L >= MIN_LINE_TO_SCORE ? L - (MIN_LINE_TO_SCORE - 1) : 0;
@@ -1034,11 +1047,20 @@ function RogueTacGame({ onExit }) {
     const [r0, c0] = idxToRC(lastIndex, N);
 
     const dirs = [
-      { dr: 0, dc: 1, kind: "H" }, // row
-      { dr: 1, dc: 0, kind: "V" }, // col
-      { dr: 1, dc: 1, kind: "D1" }, // main diag
-      { dr: 1, dc: -1, kind: "D2" }, // anti diag
+      { dr: 0, dc: 1, kind: "H" },
+      { dr: 1, dc: 0, kind: "V" },
+      { dr: 1, dc: 1, kind: "D1" },
+      { dr: 1, dc: -1, kind: "D2" },
     ];
+
+    let totalDelta = 0;
+
+    // Start from current scored segments (from ref)
+    const prevAll = scoredSegsRef.current || { X: {}, O: {} };
+    const nextAll = {
+      ...prevAll,
+      [symbol]: { ...(prevAll[symbol] || {}) },
+    };
 
     for (const { dr, dc, kind } of dirs) {
       const run = runThrough(squaresAfter, N, lastIndex, symbol, dr, dc);
@@ -1046,58 +1068,54 @@ function RogueTacGame({ onExit }) {
 
       const newPts = pointsForLen(run.len);
 
-      // Build a stable line id + 1D interval coordinate
       let lineId, startPos, endPos;
 
       if (kind === "H") {
-        lineId = `H:${r0}`; // row r
+        lineId = `H:${r0}`;
         startPos = Math.min(run.startC, run.endC);
         endPos = Math.max(run.startC, run.endC);
       } else if (kind === "V") {
-        lineId = `V:${c0}`; // col c
+        lineId = `V:${c0}`;
         startPos = Math.min(run.startR, run.endR);
         endPos = Math.max(run.startR, run.endR);
       } else if (kind === "D1") {
-        lineId = `D1:${r0 - c0}`; // diag constant (r-c)
-        startPos = Math.min(run.startR, run.endR); // use r as coord
+        lineId = `D1:${r0 - c0}`;
+        startPos = Math.min(run.startR, run.endR);
         endPos = Math.max(run.startR, run.endR);
       } else {
-        lineId = `D2:${r0 + c0}`; // anti diag constant (r+c)
+        lineId = `D2:${r0 + c0}`;
         startPos = Math.min(run.startR, run.endR);
         endPos = Math.max(run.startR, run.endR);
       }
 
-      setScoredSegs((prev) => {
-        const mine = prev[symbol] || {};
-        const list = mine[lineId] ? [...mine[lineId]] : [];
+      const mine = nextAll[symbol];
+      const list = mine[lineId] ? [...mine[lineId]] : [];
 
-        // segments that overlap this run
-        const segRange = { start: startPos, end: endPos };
-        const overlapping = list.filter((s) => overlap(s, segRange));
+      const segRange = { start: startPos, end: endPos };
+      const overlapping = list.filter((s) => overlap(s, segRange));
 
-        // if we already scored this region, only award the delta when it grows
-        const prevPts = overlapping.length
-          ? Math.max(...overlapping.map((s) => s.points))
-          : 0;
-        const delta = newPts - prevPts;
+      const prevPts = overlapping.length
+        ? Math.max(...overlapping.map((s) => s.points))
+        : 0;
 
-        if (delta > 0) {
-          setScore((s) => ({ ...s, [symbol]: (s[symbol] ?? 0) + delta }));
-        }
+      const delta = newPts - prevPts;
+      if (delta > 0) totalDelta += delta;
 
-        // merge: remove overlapped and add the new merged segment
-        const kept = list.filter((s) => !overlap(s, segRange));
-        kept.push({ start: startPos, end: endPos, points: newPts });
+      const kept = list.filter((s) => !overlap(s, segRange));
+      kept.push({ start: startPos, end: endPos, points: newPts });
 
-        return {
-          ...prev,
-          [symbol]: {
-            ...mine,
-            [lineId]: kept,
-          },
-        };
-      });
+      mine[lineId] = kept;
     }
+
+    // Commit once
+    if (totalDelta > 0) {
+      setScore((s) => ({ ...s, [symbol]: (s[symbol] ?? 0) + totalDelta }));
+    }
+
+    setScoredSegs(nextAll);
+    scoredSegsRef.current = nextAll; // <-- IMPORTANT: keep ref in sync immediately
+
+    return totalDelta;
   }
 
   // Encounter chances
@@ -1232,6 +1250,7 @@ function RogueTacGame({ onExit }) {
     setEnergySquare(null);
     setScore({ X: 0, O: 0 });
     setScoredSegs({ X: {}, O: {} });
+    setScorePop(null);
   }
 
   function restartRun() {
@@ -1382,7 +1401,15 @@ function RogueTacGame({ onExit }) {
     next[i] = playerSymbol;
 
     // scoring off the move you just placed
-    awardFromMove(playerSymbol, next, i);
+    const gained = awardFromMove(playerSymbol, next, i);
+    if (gained > 0) {
+      setScorePop({
+        id: `${Date.now()}-${Math.random()}`,
+        index: i,
+        delta: gained,
+        symbol: playerSymbol,
+      });
+    }
 
     const nextLocks = tickLocks(locks);
     setLocks(nextLocks);
@@ -1438,7 +1465,15 @@ function RogueTacGame({ onExit }) {
       nextSquares[move1] = enemySymbol;
 
       // scoring from enemy move
-      awardFromMove(enemySymbol, nextSquares, move1);
+      const gained = awardFromMove(enemySymbol, nextSquares, move1);
+      if (gained > 0) {
+        setScorePop({
+          id: `${Date.now()}-${Math.random()}`,
+          index: move1,
+          delta: gained,
+          symbol: enemySymbol,
+        });
+      }
 
       nextLocks = tickLocks(nextLocks);
 
@@ -1643,8 +1678,7 @@ function RogueTacGame({ onExit }) {
             </ul>
 
             <div style={{ marginTop: 10 }}>
-              <b>Scoring:</b> first 3-in-a-row gives 1 point, then 4 gives 1,
-              etc (per-player max).
+              <b>Scoring:</b> 3→1, 4→2, 5→3 etc.
             </div>
           </div>
         </div>
@@ -1658,6 +1692,7 @@ function RogueTacGame({ onExit }) {
               onSquareClick={handleSquareClick}
               statusText={statusText}
               energySquare={energySquare}
+              scorePop={scorePop}
             />
 
             {phase === "REWARD" && (
