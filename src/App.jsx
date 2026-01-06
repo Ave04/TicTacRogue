@@ -664,7 +664,7 @@ function InfinitacGame({ onExit }) {
 
       // optional: scoring for the thorn mark too (feels fair)
       if (res.placedIndex !== null) {
-        awardIfNewMax(enemySymbol, next, res.placedIndex);
+        awardFromMove(enemySymbol, next, res.placedIndex);
       }
     }
     // If player clicks on energy square, reward energy
@@ -1022,27 +1022,82 @@ function RogueTacGame({ onExit }) {
   const [bestLen, setBestLen] = useState({ X: 0, O: 0 });
   const [score, setScore] = useState({ X: 0, O: 0 });
 
+  // Per player, store scored segments per "line" (row/col/diag)
+  const [scoredSegs, setScoredSegs] = useState({ X: {}, O: {} });
+
   function pointsForLen(L) {
-    return L >= 3 ? L - 2 : 0;
+    return L >= MIN_LINE_TO_SCORE ? L - (MIN_LINE_TO_SCORE - 1) : 0;
+    // 3->1, 4->2, 5->3 ...
   }
 
-  function awardIfNewMax(symbol, squaresAfter, lastIndex) {
-    const len = bestLineAtMove(squaresAfter, N, lastIndex, symbol);
+  function awardFromMove(symbol, squaresAfter, lastIndex) {
+    const [r0, c0] = idxToRC(lastIndex, N);
 
-    setBestLen((prev) => {
-      const prevBest = prev[symbol] ?? 0;
+    const dirs = [
+      { dr: 0, dc: 1, kind: "H" }, // row
+      { dr: 1, dc: 0, kind: "V" }, // col
+      { dr: 1, dc: 1, kind: "D1" }, // main diag
+      { dr: 1, dc: -1, kind: "D2" }, // anti diag
+    ];
 
-      // only care if we improved our best
-      if (len <= prevBest) return prev;
+    for (const { dr, dc, kind } of dirs) {
+      const run = runThrough(squaresAfter, N, lastIndex, symbol, dr, dc);
+      if (run.len < MIN_LINE_TO_SCORE) continue;
 
-      const delta = pointsForLen(len) - pointsForLen(prevBest);
+      const newPts = pointsForLen(run.len);
 
-      if (delta > 0) {
-        setScore((s) => ({ ...s, [symbol]: (s[symbol] ?? 0) + delta }));
+      // Build a stable line id + 1D interval coordinate
+      let lineId, startPos, endPos;
+
+      if (kind === "H") {
+        lineId = `H:${r0}`; // row r
+        startPos = Math.min(run.startC, run.endC);
+        endPos = Math.max(run.startC, run.endC);
+      } else if (kind === "V") {
+        lineId = `V:${c0}`; // col c
+        startPos = Math.min(run.startR, run.endR);
+        endPos = Math.max(run.startR, run.endR);
+      } else if (kind === "D1") {
+        lineId = `D1:${r0 - c0}`; // diag constant (r-c)
+        startPos = Math.min(run.startR, run.endR); // use r as coord
+        endPos = Math.max(run.startR, run.endR);
+      } else {
+        lineId = `D2:${r0 + c0}`; // anti diag constant (r+c)
+        startPos = Math.min(run.startR, run.endR);
+        endPos = Math.max(run.startR, run.endR);
       }
 
-      return { ...prev, [symbol]: len };
-    });
+      setScoredSegs((prev) => {
+        const mine = prev[symbol] || {};
+        const list = mine[lineId] ? [...mine[lineId]] : [];
+
+        // segments that overlap this run
+        const segRange = { start: startPos, end: endPos };
+        const overlapping = list.filter((s) => overlap(s, segRange));
+
+        // if we already scored this region, only award the delta when it grows
+        const prevPts = overlapping.length
+          ? Math.max(...overlapping.map((s) => s.points))
+          : 0;
+        const delta = newPts - prevPts;
+
+        if (delta > 0) {
+          setScore((s) => ({ ...s, [symbol]: (s[symbol] ?? 0) + delta }));
+        }
+
+        // merge: remove overlapped and add the new merged segment
+        const kept = list.filter((s) => !overlap(s, segRange));
+        kept.push({ start: startPos, end: endPos, points: newPts });
+
+        return {
+          ...prev,
+          [symbol]: {
+            ...mine,
+            [lineId]: kept,
+          },
+        };
+      });
+    }
   }
 
   // Encounter chances
@@ -1103,6 +1158,52 @@ function RogueTacGame({ onExit }) {
     }
   }, [phase, rogueWinner, noMovesLeft, score, playerSymbol, enemySymbol, hand]);
 
+  // HELPER FUNCTIONS FOR NEW RULESET
+  function inBounds(r, c, N) {
+    return r >= 0 && r < N && c >= 0 && c < N;
+  }
+  function idxToRC(i, N) {
+    return [Math.floor(i / N), i % N];
+  }
+  function rcToIdx(r, c, N) {
+    return r * N + c;
+  }
+
+  // returns { startR,startC,endR,endC,len }
+  function runThrough(squares, N, i, symbol, dr, dc) {
+    const [r0, c0] = idxToRC(i, N);
+
+    // walk backwards to find start
+    let rs = r0,
+      cs = c0;
+    while (
+      inBounds(rs - dr, cs - dc, N) &&
+      squares[rcToIdx(rs - dr, cs - dc, N)] === symbol
+    ) {
+      rs -= dr;
+      cs -= dc;
+    }
+
+    // walk forwards to find end
+    let re = r0,
+      ce = c0;
+    while (
+      inBounds(re + dr, ce + dc, N) &&
+      squares[rcToIdx(re + dr, ce + dc, N)] === symbol
+    ) {
+      re += dr;
+      ce += dc;
+    }
+
+    // length along the direction
+    const len = Math.max(Math.abs(re - rs), Math.abs(ce - cs)) + 1;
+    return { startR: rs, startC: cs, endR: re, endC: ce, len };
+  }
+
+  function overlap(a, b) {
+    return a.start <= b.end && b.start <= a.end;
+  }
+
   function rogueBoardSize(floor) {
     // Floor 1-2: 8x8, Floor 3-4: 9x9, Floor 5-6: 10x10, ...
     return 8 + Math.floor((floor - 1) / 2);
@@ -1128,8 +1229,9 @@ function RogueTacGame({ onExit }) {
 
     // reset scoring for the new fight (Step 1)
     setBestLen({ X: 0, O: 0 });
-    setScore({ X: 0, O: 0 });
     setEnergySquare(null);
+    setScore({ X: 0, O: 0 });
+    setScoredSegs({ X: {}, O: {} });
   }
 
   function restartRun() {
@@ -1147,8 +1249,9 @@ function RogueTacGame({ onExit }) {
     setXIsNext(playerSymbol === "X");
     setHistory([makeEmptyBoard(rogueBoardSize(1))]);
     setBestLen({ X: 0, O: 0 });
-    setScore({ X: 0, O: 0 });
     setEnergySquare(null);
+    setScore({ X: 0, O: 0 });
+    setScoredSegs({ X: {}, O: {} });
   }
 
   // end-of-fight handling
@@ -1279,7 +1382,7 @@ function RogueTacGame({ onExit }) {
     next[i] = playerSymbol;
 
     // scoring off the move you just placed
-    awardIfNewMax(playerSymbol, next, i);
+    awardFromMove(playerSymbol, next, i);
 
     const nextLocks = tickLocks(locks);
     setLocks(nextLocks);
@@ -1296,7 +1399,7 @@ function RogueTacGame({ onExit }) {
 
       // optional: scoring for the thorn mark too (feels fair)
       if (res.placedIndex !== null) {
-        awardIfNewMax(enemySymbol, next, res.placedIndex);
+        awardFromMove(enemySymbol, next, res.placedIndex);
       }
     }
 
@@ -1335,7 +1438,7 @@ function RogueTacGame({ onExit }) {
       nextSquares[move1] = enemySymbol;
 
       // scoring from enemy move
-      awardIfNewMax(enemySymbol, nextSquares, move1);
+      awardFromMove(enemySymbol, nextSquares, move1);
 
       nextLocks = tickLocks(nextLocks);
 
@@ -1373,7 +1476,7 @@ function RogueTacGame({ onExit }) {
           nextSquares = nextSquares.slice();
           nextSquares[move2] = enemySymbol;
 
-          awardIfNewMax(enemySymbol, nextSquares, move2);
+          awardFromMove(enemySymbol, nextSquares, move2);
           nextLocks = tickLocks(nextLocks);
         }
       }
