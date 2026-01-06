@@ -1018,20 +1018,30 @@ function RogueTacGame({ onExit }) {
 
   // RogueTac scoring (per-player max)
   const MIN_LINE_TO_SCORE = 3;
-  const SCORE_TO_WIN = 3; // tweak later
+  const SCORE_TO_WIN = 8; // tweak later
   const [bestLen, setBestLen] = useState({ X: 0, O: 0 });
   const [score, setScore] = useState({ X: 0, O: 0 });
+
+  function pointsForLen(L) {
+    return L >= 3 ? L - 2 : 0;
+  }
 
   function awardIfNewMax(symbol, squaresAfter, lastIndex) {
     const len = bestLineAtMove(squaresAfter, N, lastIndex, symbol);
 
     setBestLen((prev) => {
       const prevBest = prev[symbol] ?? 0;
-      if (len >= MIN_LINE_TO_SCORE && len > prevBest) {
-        setScore((s) => ({ ...s, [symbol]: (s[symbol] ?? 0) + 1 }));
-        return { ...prev, [symbol]: len };
+
+      // only care if we improved our best
+      if (len <= prevBest) return prev;
+
+      const delta = pointsForLen(len) - pointsForLen(prevBest);
+
+      if (delta > 0) {
+        setScore((s) => ({ ...s, [symbol]: (s[symbol] ?? 0) + delta }));
       }
-      return prev;
+
+      return { ...prev, [symbol]: len };
     });
   }
 
@@ -1094,8 +1104,8 @@ function RogueTacGame({ onExit }) {
   }, [phase, rogueWinner, noMovesLeft, score, playerSymbol, enemySymbol, hand]);
 
   function rogueBoardSize(floor) {
-    // Floor 1-2: 5x5, Floor 3-4: 6x6, Floor 5-6: 7x7, ...
-    return 4 + Math.ceil(floor / 2);
+    // Floor 1-2: 8x8, Floor 3-4: 9x9, Floor 5-6: 10x10, ...
+    return 8 + Math.floor((floor - 1) / 2);
   }
 
   function pushBoard(nextSquares) {
