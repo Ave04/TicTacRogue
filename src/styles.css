@@ -298,17 +298,6 @@ body {
   background-color: #f7e300; /* Slightly lighter yellow for hover */
 }
 
-.boardWrap {
-  position: relative;
-}
-
-.popLayer {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 10;
-}
-
 .scorePop {
   position: absolute;
   left: 50%;
@@ -350,12 +339,27 @@ body {
   right: 4px;
   font-size: 12px;
   opacity: 0.85;
+  pointer-events: none;
 }
 
 .bribeSquare {
   outline: 2px solid rgba(255, 200, 0, 0.6);
+  box-shadow: inset 0 0 0 999px rgba(255, 200, 0, 0.12);
 }
 
 .trapSquare {
   outline: 2px solid rgba(255, 60, 60, 0.55);
+  box-shadow: inset 0 0 0 999px rgba(255, 60, 60, 0.1);
+}
+
+.boardStage {
+  position: relative;
+  display: inline-block; /* shrink-wrap the grid */
+}
+
+.popLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
 }

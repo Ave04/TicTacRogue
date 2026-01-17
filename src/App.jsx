@@ -37,7 +37,7 @@ const PASSIVE_DEFS = {
 const BRIBE_LOCK_DURATION = 2;
 const TRAP_LOCK_DURATION = 2;
 const BRIBE_COUNT = 2;
-const TRAP_COUNT = 3;
+const TRAP_COUNT = 4;
 
 const BOSS_EVERY = 3;
 
