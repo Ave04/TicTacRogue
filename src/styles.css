@@ -261,6 +261,7 @@ body {
 
   transition: transform 90ms ease, box-shadow 90ms ease, background 90ms ease;
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+  position: relative;
 }
 
 .square:hover {
@@ -310,23 +311,22 @@ body {
 
 .scorePop {
   position: absolute;
-  transform: translate(-50%, -60%);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -70%);
   font-weight: 900;
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  animation: popFloat 900ms ease-out forwards;
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.25);
+  font-size: 14px;
+  pointer-events: none;
+  animation: popFloat 650ms ease-out forwards;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
 }
 
-.playerPop {
-  background: rgba(15, 23, 42, 0.92);
-  color: white;
+.scorePop.player {
+  color: #16a34a; /* green-ish */
 }
 
-.enemyPop {
-  background: rgba(220, 38, 38, 0.92);
-  color: white;
+.scorePop.enemy {
+  color: #ef4444; /* red-ish */
 }
 
 @keyframes popFloat {
@@ -336,10 +336,26 @@ body {
   }
   15% {
     opacity: 1;
-    transform: translate(-50%, -70%) scale(1);
+    transform: translate(-50%, -70%) scale(1.15);
   }
   100% {
     opacity: 0;
     transform: translate(-50%, -120%) scale(1);
   }
+}
+
+.tileIcon {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.bribeSquare {
+  outline: 2px solid rgba(255, 200, 0, 0.6);
+}
+
+.trapSquare {
+  outline: 2px solid rgba(255, 60, 60, 0.55);
 }

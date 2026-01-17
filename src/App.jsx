@@ -33,6 +33,12 @@ const PASSIVE_DEFS = {
   },
 };
 
+// special squares
+const BRIBE_LOCK_DURATION = 2;
+const TRAP_LOCK_DURATION = 2;
+const BRIBE_COUNT = 2;
+const TRAP_COUNT = 3;
+
 const BOSS_EVERY = 3;
 
 const ENCOUNTER_DEFS = {
@@ -1008,6 +1014,10 @@ function RogueTacGame({ onExit }) {
   const [energy, setEnergy] = useState(1);
   const [energySquare, setEnergySquare] = useState(null);
 
+  const [specialSquares, setSpecialSquares] = useState(() =>
+    generateSpecialSquares(N, BRIBE_COUNT, TRAP_COUNT)
+  );
+
   const [encounter, setEncounter] = useState(() => rollEncounter(1));
   const [locks, setLocks] = useState({});
   const [aiThinking, setAiThinking] = useState(false);
@@ -1251,6 +1261,7 @@ function RogueTacGame({ onExit }) {
     setScore({ X: 0, O: 0 });
     setScoredSegs({ X: {}, O: {} });
     setScorePop(null);
+    setSpecialSquares(generateSpecialSquares(nextN, BRIBE_COUNT, TRAP_COUNT));
   }
 
   function restartRun() {
@@ -1271,6 +1282,9 @@ function RogueTacGame({ onExit }) {
     setEnergySquare(null);
     setScore({ X: 0, O: 0 });
     setScoredSegs({ X: {}, O: {} });
+    setSpecialSquares(
+      generateSpecialSquares(rogueBoardSize(1), BRIBE_COUNT, TRAP_COUNT)
+    );
   }
 
   // end-of-fight handling
@@ -1400,7 +1414,7 @@ function RogueTacGame({ onExit }) {
     let next = currentSquares.slice();
     next[i] = playerSymbol;
 
-    // scoring off the move you just placed
+    // score from lines
     const gained = awardFromMove(playerSymbol, next, i);
     if (gained > 0) {
       setScorePop({
@@ -1411,7 +1425,17 @@ function RogueTacGame({ onExit }) {
       });
     }
 
-    const nextLocks = tickLocks(locks);
+    // tick locks
+    let nextLocks = tickLocks(locks);
+
+    // consume special (BRIBE/TRAP) on the square you just played
+    const specialRes = consumeSpecialAtMove({
+      index: i,
+      squaresAfter: next,
+      baseLocks: nextLocks,
+    });
+    nextLocks = specialRes.nextLocks;
+
     setLocks(nextLocks);
 
     // thorns (may add enemy mark)
@@ -1465,17 +1489,41 @@ function RogueTacGame({ onExit }) {
       nextSquares[move1] = enemySymbol;
 
       // scoring from enemy move
-      const gained = awardFromMove(enemySymbol, nextSquares, move1);
-      if (gained > 0) {
-        setScorePop({
-          id: `${Date.now()}-${Math.random()}`,
-          index: move1,
-          delta: gained,
-          symbol: enemySymbol,
+      const specialType = specialSquares?.[move1];
+      if (specialType) {
+        // consume it (one-time)
+        setSpecialSquares((prev) => {
+          const copy = { ...prev };
+          delete copy[move1];
+          return copy;
         });
-      }
 
-      nextLocks = tickLocks(nextLocks);
+        if (specialType === "BRIBE") {
+          // bribe = enemy gains +1 (or swap to player-only version if you prefer)
+          setScore((s) => ({ ...s, [enemySymbol]: (s[enemySymbol] ?? 0) + 1 }));
+
+          // optional enemy pop
+          setScorePop({
+            id: `${Date.now()}-${Math.random()}`,
+            index: move1,
+            delta: 1,
+            symbol: enemySymbol,
+          });
+        }
+
+        if (specialType === "TRAP") {
+          // trap = lock adjacent squares
+          const adj = getAdj4(move1, N);
+          const locked = { ...nextLocks };
+
+          for (const j of adj) {
+            if (nextSquares[j] === null) {
+              locked[j] = Math.max(locked[j] ?? 0, TRAP_LOCK_DURATION);
+            }
+          }
+          nextLocks = locked;
+        }
+      }
 
       // passives after enemy move
       if (hasPassive(encounter, "LOCKDOWN")) {
@@ -1529,6 +1577,7 @@ function RogueTacGame({ onExit }) {
     currentSquares,
     N,
     locks,
+    specialSquares,
     enemySymbol,
     playerSymbol,
     encounter,
@@ -1597,6 +1646,102 @@ function RogueTacGame({ onExit }) {
           isPlayersTurn ? playerSymbol : enemySymbol
         }) • Score ${pScore}–${eScore}`;
 
+  function generateSpecialSquares(boardN, bribeCount, trapCount) {
+    const total = boardN * boardN;
+    const picks = new Set();
+
+    function pickUnique() {
+      let tries = 0;
+      while (tries++ < 500) {
+        const i = Math.floor(Math.random() * total);
+        if (!picks.has(i)) {
+          picks.add(i);
+          return i;
+        }
+      }
+      return null;
+    }
+
+    const map = {};
+    for (let k = 0; k < bribeCount; k++) {
+      const i = pickUnique();
+      if (i !== null) map[i] = "BRIBE";
+    }
+    for (let k = 0; k < trapCount; k++) {
+      const i = pickUnique();
+      if (i !== null) map[i] = "TRAP";
+    }
+    return map;
+  }
+
+  function getAdj4(i, boardN) {
+    const r = Math.floor(i / boardN);
+    const c = i % boardN;
+    const out = [];
+    if (r > 0) out.push(i - boardN);
+    if (r < boardN - 1) out.push(i + boardN);
+    if (c > 0) out.push(i - 1);
+    if (c < boardN - 1) out.push(i + 1);
+    return out;
+  }
+
+  function applyTrapLockAt(index, squaresAfter, baseLocks, duration) {
+    const nextLocks = { ...baseLocks };
+    const adj = getAdj4(index, N);
+
+    for (const j of adj) {
+      // only lock empty squares (and don't overwrite longer locks)
+      if (squaresAfter[j] === null) {
+        nextLocks[j] = Math.max(nextLocks[j] ?? 0, duration);
+      }
+    }
+    return nextLocks;
+  }
+
+  /**
+   * Returns { nextLocks, didBribe, didTrap }
+   * Also consumes the special at `index`.
+   */
+  function consumeSpecialAtMove({ index, squaresAfter, baseLocks }) {
+    const type = specialSquares?.[index];
+    if (!type) return { nextLocks: baseLocks, didBribe: false, didTrap: false };
+
+    // consume it (one-time)
+    setSpecialSquares((prev) => {
+      const copy = { ...prev };
+      delete copy[index];
+      return copy;
+    });
+
+    if (type === "BRIBE") {
+      // enemy always gets +1 (even if enemy stepped on it)
+      setScore((s) => ({ ...s, [enemySymbol]: (s[enemySymbol] ?? 0) + 1 }));
+
+      // OPTIONAL: pop for enemy +1 (won't affect gameplay)
+      setTimeout(() => {
+        setScorePop({
+          id: `${Date.now()}-${Math.random()}`,
+          index,
+          delta: 1,
+          symbol: enemySymbol,
+        });
+      }, 0);
+
+      return { nextLocks: baseLocks, didBribe: true, didTrap: false };
+    }
+
+    if (type === "TRAP") {
+      const nextLocks = applyTrapLockAt(
+        index,
+        squaresAfter,
+        baseLocks,
+        TRAP_LOCK_DURATION
+      );
+      return { nextLocks, didBribe: false, didTrap: true };
+    }
+
+    return { nextLocks: baseLocks, didBribe: false, didTrap: false };
+  }
   return (
     <div className="page">
       <div className="header">
@@ -1692,6 +1837,7 @@ function RogueTacGame({ onExit }) {
               onSquareClick={handleSquareClick}
               statusText={statusText}
               energySquare={energySquare}
+              specialSquares={specialSquares}
               scorePop={scorePop}
             />
 

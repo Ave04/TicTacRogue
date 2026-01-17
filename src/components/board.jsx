@@ -57,6 +57,7 @@ export default function Board({
   statusText,
   energySquare,
   scorePop,
+  specialSquares,
 }) {
   const boardRef = useRef(null);
   const squareRefs = useRef([]);
@@ -97,53 +98,70 @@ export default function Board({
     <div className="boardWrap">
       <div className="status">{statusText}</div>
 
-      <div className="popLayer" aria-hidden="true">
-        {pops.map((p) => (
-          <div
-            key={p.id}
-            className={`scorePop ${
-              p.symbol === "O" ? "enemyPop" : "playerPop"
-            }`}
-            style={{ left: p.x, top: p.y }}
-          >
-            {p.text}
-          </div>
-        ))}
-      </div>
-
-      <div
-        className="board"
-        style={{
-          gridTemplateColumns: `repeat(${N}, 36px)`,
-          gridTemplateRows: `repeat(${N}, 36px)`,
-        }}
-      >
-        {squares.map((value, i) => {
-          const isLocked = !!locks?.[i];
-          const isEnergy = i === energySquare;
-
-          const showPop = scorePop && scorePop.index === i;
-
-          return (
+      {/* IMPORTANT: this must be the positioning parent */}
+      <div className="boardStage" style={{ position: "relative" }}>
+        {/* floating pops live ABOVE the grid, relative to it */}
+        <div className="popLayer" aria-hidden="true">
+          {pops.map((p) => (
             <div
-              key={i}
-              className={[
-                "square",
-                isLocked ? "locked" : "",
-                isEnergy ? "energySquare" : "",
-              ].join(" ")}
-              onClick={() => {
-                if (isLocked) return;
-                onSquareClick(i);
-              }}
-              aria-disabled={isLocked}
+              key={p.id}
+              className={`scorePop ${
+                p.symbol === "O" ? "enemyPop" : "playerPop"
+              }`}
+              style={{ left: p.x, top: p.y }}
             >
-              {value}
-
-              {showPop && <div className="scorePop">+{scorePop.delta}</div>}
+              {p.text}
             </div>
-          );
-        })}
+          ))}
+        </div>
+
+        {/* the grid itself */}
+        <div
+          ref={boardRef} // ✅ attach ref here
+          className="board"
+          style={{
+            gridTemplateColumns: `repeat(${N}, 36px)`,
+            gridTemplateRows: `repeat(${N}, 36px)`,
+          }}
+        >
+          {squares.map((value, i) => {
+            const isLocked = !!locks?.[i];
+            const isEnergy = i === energySquare;
+
+            // ✅ new: read special square type (see step 2 below)
+            const special = specialSquares?.[i]; // "BRIBE" | "TRAP" | undefined
+
+            return (
+              <div
+                key={i}
+                ref={(el) => (squareRefs.current[i] = el)} // ✅ needed for positioning pops
+                className={[
+                  "square",
+                  isLocked ? "locked" : "",
+                  isEnergy ? "energySquare" : "",
+                  special === "BRIBE" ? "bribeSquare" : "",
+                  special === "TRAP" ? "trapSquare" : "",
+                ].join(" ")}
+                onClick={() => {
+                  if (isLocked) return;
+                  onSquareClick(i);
+                }}
+                aria-disabled={isLocked}
+                data-special={special || ""} // optional debugging hook
+              >
+                {value}
+
+                {/* optional: tiny marker if empty */}
+                {!value && special === "BRIBE" && (
+                  <span className="tileIcon">💰</span>
+                )}
+                {!value && special === "TRAP" && (
+                  <span className="tileIcon">🪤</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
